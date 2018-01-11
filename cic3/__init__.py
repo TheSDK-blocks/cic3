@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 10.01.2018 17:04
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 11.01.2018 15:41
 import os
 import sys
 import numpy as np
@@ -23,6 +23,7 @@ class cic3(rtl,thesdk):
         self.proplist = [ 'Rs' ];    #properties that can be propagated from parent
         self.Rs = 160e6*8;          # sampling frequency
         self.cic3Rs_slow = 20e6;          # sampling frequency
+        self.integscale = 1023
         self.iptr_A = refptr();
         self.model='py';             #can be set externally, but is not propagated
         self._Z = refptr();
@@ -37,6 +38,7 @@ class cic3(rtl,thesdk):
         ratio=int(self.Rs/self.cic3Rs_slow)
         #Pervert reduce to convolve three FIRs 
         self.H=reduce(lambda val,cum: np.convolve(val[:,0],cum[:,0]).reshape(-1,1),[np.ones((ratio,1))]*3)
+        self.H=self.H/np.abs(np.amax(self.H))
         self.def_rtl()
         rndpart=os.path.basename(tempfile.mkstemp()[1])
         self._infile=self._rtlsimpath +'/A_' + rndpart +'.txt'
@@ -52,23 +54,25 @@ class cic3(rtl,thesdk):
 
     def get_rtlcmd(self):
         #the could be gathered to rtl class in some way but they are now here for clarity
-        submission = ' bsub -q normal '  
+        submission = ' bsub '  
         rtllibcmd =  'vlib ' +  self._workpath + ' && sleep 2'
         rtllibmapcmd = 'vmap work ' + self._workpath
 
         if (self.model is 'vhdl'):
-            rtlcompcmd = ( 'vcom ' + self._rtlsrcpath + '/' + self._name + '.vhd '
-                          + self._rtlsrcpath + '/tb_'+ self._name+ '.vhd' )
-            rtlsimcmd =  ( 'vsim -64 -batch -t 1ps -g g_infile=' + 
-                           self._infile + ' -g g_outfile=' + self._outfile 
-                           + ' work.tb_' + self._name + ' -do "run -all; quit -f;"')
-            rtlcmd =  submission + rtllibcmd  +  ' && ' + rtllibmapcmd + ' && ' + rtlcompcmd +  ' && ' + rtlsimcmd
+            pass
+        #    rtlcompcmd = ( 'vcom ' + self._rtlsrcpath + '/' + self._name + '.vhd '
+        #                  + self._rtlsrcpath + '/tb_'+ self._name+ '.vhd' )
+        #    rtlsimcmd =  ( 'vsim -64 -batch -t 1ps -g g_infile=' + 
+        #                   self._infile + ' -g g_outfile=' + self._outfile + ' -g g_gain=' + str(self.integscale)  
+        #                   + ' work.tb_' + self._name + ' -do "run -all; quit -f;"')
+        #    rtlcmd =  submission + rtllibcmd  +  ' && ' + rtllibmapcmd + ' && ' + rtlcompcmd +  ' && ' + rtlsimcmd
 
         elif (self.model is 'sv'):
             rtlcompcmd = ( 'vlog -work work ' + self._rtlsrcpath + '/' + self._name + '.sv '
                            + self._rtlsrcpath + '/tb_' + self._name +'.sv')
             rtlsimcmd = ( 'vsim -64 -batch -t 1ps -voptargs=+acc -g g_infile=' + self._infile
-                          + ' -g g_outfile=' + self._outfile + ' work.tb_' + self._name  + ' -do "run -all; quit;"')
+                          + ' -g g_outfile=' + self._outfile + ' -g g_integscale=' + str(self.integscale)
+                          + ' work.tb_' + self._name  + ' -do "run -all; quit;"' )
 
             rtlcmd =  submission + rtllibcmd  +  ' && ' + rtllibmapcmd + ' && ' + rtlcompcmd +  ' && ' + rtlsimcmd
 
@@ -128,6 +132,7 @@ if __name__=="__main__":
     fsorig=20e6
     highrate=fsorig*16*2
     lowrate=fsorig*8
+    integscale=4
     siggen=f2_signal_gen()
     fsindexes=range(int(lowrate/fsorig),int(highrate/fsorig),int(lowrate/fsorig))
     print(list(fsindexes))
@@ -141,11 +146,13 @@ if __name__=="__main__":
     #Mimic ADC
     bits=10
     insig=siggen._Z.Value[0,:,0].reshape(-1,1)
-    insig=np.round(insig/np.amax(np.abs(insig))*(2**(bits-1)-1))
+    insig=np.round(insig/np.amax([np.abs(np.real(insig)), np.abs(np.imag(insig))])*(2**(bits-1)-1))
+    str="Input signal range is %i" %((2**(bits-1)-1))
+    t.print_log({'type':'I', 'msg': str})
     h=cic3()
     h.Rs=highrate
     h.cic3Rs_slow=lowrate
-    
+    h.integscale=integscale 
     h.iptr_A.Value=insig
     h.model='sv'
     h.init()
@@ -160,17 +167,11 @@ if __name__=="__main__":
     plt.ylim((-80,3))
     plt.grid(True)
     f.show()
-
-    nbits=16
-    spe2=np.fft.fft(np.round(impulse*(2**(nbits-1)-1)),axis=0)
-    g=plt.figure(2)
-    plt.plot(w,20*np.log10(np.abs(spe2)/np.amax(np.abs(spe2))))
-    plt.ylim((-80,3))
-    plt.grid(True)
-    g.show()
     
     #spe3=np.fft.fft(h._Z.Value,axis=0)
-    print(h._Z.Value)
+    maximum=np.amax([np.abs(np.real(h._Z.Value)), np.abs(np.imag(h._Z.Value))])
+    str="Output signal range is %i" %(maximum)
+    t.print_log({'type':'I', 'msg': str})
     fs, spe3=sig.welch(h._Z.Value,fs=lowrate,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
     print(fs)
     w=np.arange(spe3.shape[0])/spe3.shape[0]*lowrate
