@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 11.01.2018 17:12
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 11.01.2018 17:18
 import os
 import sys
 import numpy as np
@@ -136,7 +136,7 @@ if __name__=="__main__":
     fsorig=20e6
     highrate=fsorig*16*2
     lowrate=fsorig*8
-    integscale=1023
+    integscale=4
     siggen=f2_signal_gen()
     fsindexes=range(int(lowrate/fsorig),int(highrate/fsorig),int(lowrate/fsorig))
     print(list(fsindexes))
