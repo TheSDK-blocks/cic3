@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 11.01.2018 15:41
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 11.01.2018 17:12
 import os
 import sys
 import numpy as np
@@ -43,6 +43,8 @@ class cic3(rtl,thesdk):
         rndpart=os.path.basename(tempfile.mkstemp()[1])
         self._infile=self._rtlsimpath +'/A_' + rndpart +'.txt'
         self._outfile=self._rtlsimpath +'/Z_' + rndpart +'.txt'
+        self._rtlparameters=dict([ ('g_rs',self.Rs), ('g_Rs_slow',self.cic3Rs_slow), ('g_integscale',self.integscale) ])
+        #self._rtlparameters=dict([('g_integscale',self.integscale) ])
         self._rtlcmd=self.get_rtlcmd()
 
     def decimate_input(self):
@@ -70,8 +72,10 @@ class cic3(rtl,thesdk):
         elif (self.model is 'sv'):
             rtlcompcmd = ( 'vlog -work work ' + self._rtlsrcpath + '/' + self._name + '.sv '
                            + self._rtlsrcpath + '/tb_' + self._name +'.sv')
+
+            gstring=' '.join([ ('-g ' + str(param) +'='+ str(val)) for param,val in iter(self._rtlparameters.items()) ])
             rtlsimcmd = ( 'vsim -64 -batch -t 1ps -voptargs=+acc -g g_infile=' + self._infile
-                          + ' -g g_outfile=' + self._outfile + ' -g g_integscale=' + str(self.integscale)
+                          + ' -g g_outfile=' + self._outfile + ' ' + gstring
                           + ' work.tb_' + self._name  + ' -do "run -all; quit;"' )
 
             rtlcmd =  submission + rtllibcmd  +  ' && ' + rtllibmapcmd + ' && ' + rtlcompcmd +  ' && ' + rtlsimcmd
@@ -132,13 +136,14 @@ if __name__=="__main__":
     fsorig=20e6
     highrate=fsorig*16*2
     lowrate=fsorig*8
-    integscale=4
+    integscale=1023
     siggen=f2_signal_gen()
     fsindexes=range(int(lowrate/fsorig),int(highrate/fsorig),int(lowrate/fsorig))
     print(list(fsindexes))
     freqlist=[1.0e6, 0.45*fsorig]
     _=[freqlist.extend([i*fsorig-0.5*fsorig, i*fsorig+0.5*fsorig]) for i in list(fsindexes) ] 
     #freqlist=list(filter(lambda x: x < highrate/2, freqlist))
+    print(freqlist)
     siggen.bbsigdict={ 'mode':'sinusoid', 'freqs':freqlist, 'length':2**14, 'BBRs':highrate };
     siggen.Users=1
     siggen.Txantennas=1
