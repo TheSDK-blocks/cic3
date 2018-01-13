@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 11.01.2018 17:18
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 12.01.2018 21:06
 import os
 import sys
 import numpy as np
@@ -15,10 +15,10 @@ from functools import reduce
 from thesdk import *
 
 from refptr import *
-from rtl import *
+from verilog import *
 
 #Simple buffer template
-class cic3(rtl,thesdk):
+class cic3(verilog,thesdk):
     def __init__(self,*arg): 
         self.proplist = [ 'Rs' ];    #properties that can be propagated from parent
         self.Rs = 160e6*8;          # sampling frequency
@@ -39,50 +39,23 @@ class cic3(rtl,thesdk):
         #Pervert reduce to convolve three FIRs 
         self.H=reduce(lambda val,cum: np.convolve(val[:,0],cum[:,0]).reshape(-1,1),[np.ones((ratio,1))]*3)
         self.H=self.H/np.abs(np.amax(self.H))
-        self.def_rtl()
-        rndpart=os.path.basename(tempfile.mkstemp()[1])
-        self._infile=self._rtlsimpath +'/A_' + rndpart +'.txt'
-        self._outfile=self._rtlsimpath +'/Z_' + rndpart +'.txt'
-        self._rtlparameters=dict([ ('g_rs',self.Rs), ('g_Rs_slow',self.cic3Rs_slow), ('g_integscale',self.integscale) ])
-        #self._rtlparameters=dict([('g_integscale',self.integscale) ])
-        self._rtlcmd=self.get_rtlcmd()
+        self.def_verilog()
+        self._vlogparameters=dict([ ('g_rs',self.Rs), ('g_Rs_slow',self.cic3Rs_slow), ('g_integscale',self.integscale) ])
 
-    def decimate_input(self):
+
+        #rndpart=os.path.basename(tempfile.mkstemp()[1])
+        #self._infile=self._rtlsimpath +'/A_' + rndpart +'.txt'
+        #self._outfile=self._rtlsimpath +'/Z_' + rndpart +'.txt'
+        ##self._rtlparameters=dict([('g_integscale',self.integscale) ])
+        #self._rtlcmd=self.get_rtlcmd()
+
+    def main(self):
         ratio=int(self.Rs/self.cic3Rs_slow)
         out=np.convolve(self.iptr_A.Value.reshape(-1,1)[:,0],self.H[:,0]).reshape(-1,1)[0::ratio,0]
         if self.par:
             queue.put(out)
         self._Z.Value=out
 
-    def get_rtlcmd(self):
-        #the could be gathered to rtl class in some way but they are now here for clarity
-        submission = ' bsub '  
-        rtllibcmd =  'vlib ' +  self._workpath + ' && sleep 2'
-        rtllibmapcmd = 'vmap work ' + self._workpath
-
-        if (self.model is 'vhdl'):
-            pass
-        #    rtlcompcmd = ( 'vcom ' + self._rtlsrcpath + '/' + self._name + '.vhd '
-        #                  + self._rtlsrcpath + '/tb_'+ self._name+ '.vhd' )
-        #    rtlsimcmd =  ( 'vsim -64 -batch -t 1ps -g g_infile=' + 
-        #                   self._infile + ' -g g_outfile=' + self._outfile + ' -g g_gain=' + str(self.integscale)  
-        #                   + ' work.tb_' + self._name + ' -do "run -all; quit -f;"')
-        #    rtlcmd =  submission + rtllibcmd  +  ' && ' + rtllibmapcmd + ' && ' + rtlcompcmd +  ' && ' + rtlsimcmd
-
-        elif (self.model is 'sv'):
-            rtlcompcmd = ( 'vlog -work work ' + self._rtlsrcpath + '/' + self._name + '.sv '
-                           + self._rtlsrcpath + '/tb_' + self._name +'.sv')
-
-            gstring=' '.join([ ('-g ' + str(param) +'='+ str(val)) for param,val in iter(self._rtlparameters.items()) ])
-            rtlsimcmd = ( 'vsim -64 -batch -t 1ps -voptargs=+acc -g g_infile=' + self._infile
-                          + ' -g g_outfile=' + self._outfile + ' ' + gstring
-                          + ' work.tb_' + self._name  + ' -do "run -all; quit;"' )
-
-            rtlcmd =  submission + rtllibcmd  +  ' && ' + rtllibmapcmd + ' && ' + rtlcompcmd +  ' && ' + rtlsimcmd
-
-        else:
-            rtlcmd=[]
-        return rtlcmd
 
     def run(self,*arg):
         if len(arg)>0:
@@ -92,39 +65,39 @@ class cic3(rtl,thesdk):
             self.par=False
 
         if self.model=='py':
-            self.decimate_input()
+            self.main()
         else: 
-          try:
-              os.remove(self._infile)
-          except:
-              pass
-          fid=open(self._infile,'wb')
-          #np.savetxt(fid,np.transpose(self.iptr_A.Value),fmt='%.0f')
-          np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
-          fid.close()
-          while not os.path.isfile(self._infile):
-              self.print_log({'type':'I', 'msg':"Wait infile to appear"})
-              time.sleep(5)
-          try:
-              os.remove(self._outfile)
-          except:
-              pass
-          self.print_log({'type':'I', 'msg':"Running external command %s\n" %(self._rtlcmd) })
-          subprocess.call(shlex.split(self._rtlcmd));
-          
-          while not os.path.isfile(self._outfile):
-              self.print_log({'type':'I', 'msg':"Wait outfile to appear"})
-              time.sleep(5)
-          fid=open(self._outfile,'r')
-          out = np.loadtxt(fid,dtype=complex)
-          #Of course it does not work symmetrically with savetxt
-          out=(out[:,0]+1j*out[:,1]).reshape(-1,1) 
-          fid.close()
-          if self.par:
-              queue.put(out)
-          self._Z.Value=out
+          self.write_infile()
+          self.run_verilog()
+          self.read_outfile()
+
+    def write_infile(self):
+        rndpart=os.path.basename(tempfile.mkstemp()[1])
+        if self.model=='sv':
+            self._infile=self._vlogsimpath +'/A_' + rndpart +'.txt'
+            self._outfile=self._vlogsimpath +'/Z_' + rndpart +'.txt'
+        elif self.model=='vhdl':
+            pass
+        else:
+            pass
+        try:
           os.remove(self._infile)
-          os.remove(self._outfile)
+        except:
+          pass
+        fid=open(self._infile,'wb')
+        np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
+        fid.close()
+
+    def read_outfile(self):
+        fid=open(self._outfile,'r')
+        out = np.loadtxt(fid,dtype=complex)
+        #Of course it does not work symmetrically with savetxt
+        out=(out[:,0]+1j*out[:,1]).reshape(-1,1) 
+        fid.close()
+        if self.par:
+          queue.put(out)
+        self._Z.Value=out
+        os.remove(self._outfile)
 
 if __name__=="__main__":
     import matplotlib.pyplot as plt
@@ -136,7 +109,7 @@ if __name__=="__main__":
     fsorig=20e6
     highrate=fsorig*16*2
     lowrate=fsorig*8
-    integscale=4
+    integscale=256
     siggen=f2_signal_gen()
     fsindexes=range(int(lowrate/fsorig),int(highrate/fsorig),int(lowrate/fsorig))
     print(list(fsindexes))
