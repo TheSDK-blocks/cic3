@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 14.01.2018 11:08
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 16.01.2018 11:34
 import os
 import sys
 import numpy as np
@@ -20,9 +20,9 @@ from verilog import *
 #Simple buffer template
 class cic3(verilog,thesdk):
     def __init__(self,*arg): 
-        self.proplist = [ 'Rs', 'cic3Rs_slow' ];    #properties that can be propagated from parent
-        self.Rs = 160e6*8;          # sampling frequency
-        self.cic3Rs_slow = 4*20e6;          # sampling frequency
+        self.proplist = [' '];    #properties that can be propagated from parent
+        self.Rs_high = 160e6*8;          # sampling frequency
+        self.Rs_low  = 4*20e6;          # sampling frequency
         self.integscale = 1023
         self.iptr_A = refptr();
         self.model='py';             #can be set externally, but is not propagated
@@ -35,15 +35,14 @@ class cic3(verilog,thesdk):
         self.init()
 
     def init(self):
-        ratio=int(self.Rs/self.cic3Rs_slow)
+        ratio=int(self.Rs_high/self.Rs_low)
         #Pervert reduce to convolve three FIRs 
         self.H=reduce(lambda val,cum: np.convolve(val[:,0],cum[:,0]).reshape(-1,1),[np.ones((ratio,1))]*3)
-        self.H=self.H/np.abs(np.amax(self.H))
         self.def_verilog()
-        self._vlogparameters=dict([ ('g_rs',self.Rs), ('g_Rs_slow',self.cic3Rs_slow), ('g_integscale',self.integscale) ])
+        self._vlogparameters=dict([ ('g_rs',self.Rs_high), ('g_Rs_slow',self.Rs_low), ('g_integscale',self.integscale) ])
 
     def main(self):
-        ratio=int(self.Rs/self.cic3Rs_slow)
+        ratio=int(self.Rs_high/self.Rs_low)
         out=np.convolve(self.iptr_A.Value.reshape(-1,1)[:,0],self.H[:,0]).reshape(-1,1)[0::ratio,0].reshape(-1,1)
         print(out.shape)
         if self.par:
@@ -122,8 +121,8 @@ if __name__=="__main__":
     str="Input signal range is %i" %((2**(bits-1)-1))
     t.print_log({'type':'I', 'msg': str})
     h=cic3()
-    h.Rs=highrate
-    h.cic3Rs_slow=lowrate
+    h.Rs_high=highrate
+    h.Rs_low=lowrate
     h.integscale=integscale 
     h.iptr_A.Value=insig
     h.model='sv'
