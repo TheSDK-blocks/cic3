@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 12.01.2018 21:06
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 14.01.2018 11:08
 import os
 import sys
 import numpy as np
@@ -20,9 +20,9 @@ from verilog import *
 #Simple buffer template
 class cic3(verilog,thesdk):
     def __init__(self,*arg): 
-        self.proplist = [ 'Rs' ];    #properties that can be propagated from parent
+        self.proplist = [ 'Rs', 'cic3Rs_slow' ];    #properties that can be propagated from parent
         self.Rs = 160e6*8;          # sampling frequency
-        self.cic3Rs_slow = 20e6;          # sampling frequency
+        self.cic3Rs_slow = 4*20e6;          # sampling frequency
         self.integscale = 1023
         self.iptr_A = refptr();
         self.model='py';             #can be set externally, but is not propagated
@@ -42,16 +42,10 @@ class cic3(verilog,thesdk):
         self.def_verilog()
         self._vlogparameters=dict([ ('g_rs',self.Rs), ('g_Rs_slow',self.cic3Rs_slow), ('g_integscale',self.integscale) ])
 
-
-        #rndpart=os.path.basename(tempfile.mkstemp()[1])
-        #self._infile=self._rtlsimpath +'/A_' + rndpart +'.txt'
-        #self._outfile=self._rtlsimpath +'/Z_' + rndpart +'.txt'
-        ##self._rtlparameters=dict([('g_integscale',self.integscale) ])
-        #self._rtlcmd=self.get_rtlcmd()
-
     def main(self):
         ratio=int(self.Rs/self.cic3Rs_slow)
-        out=np.convolve(self.iptr_A.Value.reshape(-1,1)[:,0],self.H[:,0]).reshape(-1,1)[0::ratio,0]
+        out=np.convolve(self.iptr_A.Value.reshape(-1,1)[:,0],self.H[:,0]).reshape(-1,1)[0::ratio,0].reshape(-1,1)
+        print(out.shape)
         if self.par:
             queue.put(out)
         self._Z.Value=out
