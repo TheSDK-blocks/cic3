@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 16.01.2018 11:34
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 31.08.2018 22:02
 import os
 import sys
 import numpy as np
@@ -19,6 +19,10 @@ from verilog import *
 
 #Simple buffer template
 class cic3(verilog,thesdk):
+    @property
+    def _classfile(self):
+        return os.path.dirname(os.path.realpath(__file__)) + "/"+__name__
+
     def __init__(self,*arg): 
         self.proplist = [' '];    #properties that can be propagated from parent
         self.Rs_high = 160e6*8;          # sampling frequency
@@ -27,7 +31,6 @@ class cic3(verilog,thesdk):
         self.iptr_A = refptr();
         self.model='py';             #can be set externally, but is not propagated
         self._Z = refptr();
-        self._classfile=os.path.dirname(os.path.realpath(__file__)) + "/"+__name__
         if len(arg)>=1:
             parent=arg[0]
             self.copy_propval(parent,self.proplist)
