@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 31.08.2018 22:02
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 03.09.2018 19:26
 import os
 import sys
 import numpy as np
@@ -28,6 +28,7 @@ class cic3(verilog,thesdk):
         self.Rs_high = 160e6*8;          # sampling frequency
         self.Rs_low  = 4*20e6;          # sampling frequency
         self.integscale = 1023
+        self.cic3shift = 0
         self.iptr_A = refptr();
         self.model='py';             #can be set externally, but is not propagated
         self._Z = refptr();
@@ -46,8 +47,9 @@ class cic3(verilog,thesdk):
 
     def main(self):
         ratio=int(self.Rs_high/self.Rs_low)
+        #Convert this to cumsum, shift and diff
         out=np.convolve(self.iptr_A.Value.reshape(-1,1)[:,0],self.H[:,0]).reshape(-1,1)[0::ratio,0].reshape(-1,1)
-        print(out.shape)
+        out=out*2**self.cic3shift
         if self.par:
             queue.put(out)
         self._Z.Value=out
