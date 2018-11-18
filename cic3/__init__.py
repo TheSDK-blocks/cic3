@@ -1,5 +1,5 @@
 # cic3 class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 03.09.2018 19:26
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 13.11.2018 13:53
 import os
 import sys
 import numpy as np
@@ -39,17 +39,18 @@ class cic3(verilog,thesdk):
         self.init()
 
     def init(self):
-        ratio=int(self.Rs_high/self.Rs_low)
-        #Pervert reduce to convolve three FIRs 
-        self.H=reduce(lambda val,cum: np.convolve(val[:,0],cum[:,0]).reshape(-1,1),[np.ones((ratio,1))]*3)
         self.def_verilog()
         self._vlogparameters=dict([ ('g_rs',self.Rs_high), ('g_Rs_slow',self.Rs_low), ('g_integscale',self.integscale) ])
 
     def main(self):
         ratio=int(self.Rs_high/self.Rs_low)
-        #Convert this to cumsum, shift and diff
-        out=np.convolve(self.iptr_A.Value.reshape(-1,1)[:,0],self.H[:,0]).reshape(-1,1)[0::ratio,0].reshape(-1,1)
-        out=out*2**self.cic3shift
+
+        out=reduce(lambda signal, func: func(signal), 
+                    [ lambda s: np.cumsum(s,axis=0) for i in range(3) ], 
+                    self.iptr_A.Value.reshape(-1,1)[:,0]).reshape(-1,1)*self.integscale
+        out=reduce(lambda signal, func: func(signal), 
+                    [ lambda s: np.diff(s,axis=0) for i in range(3) ], 
+                    out).reshape(-1,1)*2**self.cic3shift
         if self.par:
             queue.put(out)
         self._Z.Value=out
@@ -89,6 +90,7 @@ class cic3(verilog,thesdk):
     def read_outfile(self):
         fid=open(self._outfile,'r')
         out = np.loadtxt(fid,dtype=complex)
+
         #Of course it does not work symmetrically with savetxt
         out=(out[:,0]+1j*out[:,1]).reshape(-1,1) 
         fid.close()
