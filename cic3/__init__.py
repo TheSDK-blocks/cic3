@@ -29,9 +29,9 @@ class cic3(verilog,thesdk):
         self.Rs_low  = 4*20e6;          # sampling frequency
         self.integscale = 1023
         self.cic3shift = 0
-        self.iptr_A = refptr();
+        self.iptr_A = IO();
         self.model='py';             #can be set externally, but is not propagated
-        self._Z = refptr();
+        self._Z = IO();
         if len(arg)>=1:
             parent=arg[0]
             self.copy_propval(parent,self.proplist)
@@ -47,13 +47,13 @@ class cic3(verilog,thesdk):
 
         out=reduce(lambda signal, func: func(signal), 
                     [ lambda s: np.cumsum(s,axis=0) for i in range(3) ], 
-                    self.iptr_A.Value.reshape(-1,1)[:,0]).reshape(-1,1)*self.integscale
+                    self.iptr_A.Data.reshape(-1,1)[:,0]).reshape(-1,1)*self.integscale
         out=reduce(lambda signal, func: func(signal), 
                     [ lambda s: np.diff(s,axis=0) for i in range(3) ], 
                     out).reshape(-1,1)*2**self.cic3shift
         if self.par:
             queue.put(out)
-        self._Z.Value=out
+        self._Z.Data=out
 
 
     def run(self,*arg):
@@ -84,7 +84,7 @@ class cic3(verilog,thesdk):
         except:
           pass
         fid=open(self._infile,'wb')
-        np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
+        np.savetxt(fid,self.iptr_A.Data.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
         fid.close()
 
     def read_outfile(self):
@@ -96,7 +96,7 @@ class cic3(verilog,thesdk):
         fid.close()
         if self.par:
           queue.put(out)
-        self._Z.Value=out
+        self._Z.Data=out
         os.remove(self._outfile)
 
 if __name__=="__main__":
@@ -123,7 +123,7 @@ if __name__=="__main__":
     siggen.init()
     #Mimic ADC
     bits=10
-    insig=siggen._Z.Value[0,:,0].reshape(-1,1)
+    insig=siggen._Z.Data[0,:,0].reshape(-1,1)
     insig=np.round(insig/np.amax([np.abs(np.real(insig)), np.abs(np.imag(insig))])*(2**(bits-1)-1))
     str="Input signal range is %i" %((2**(bits-1)-1))
     t.print_log({'type':'I', 'msg': str})
@@ -131,7 +131,7 @@ if __name__=="__main__":
     h.Rs_high=highrate
     h.Rs_low=lowrate
     h.integscale=integscale 
-    h.iptr_A.Value=insig
+    h.iptr_A.Data=insig
     h.model='sv'
     h.init()
     impulse=np.r_['0', h.H, np.zeros((1024-h.H.shape[0],1))]
@@ -146,11 +146,11 @@ if __name__=="__main__":
     plt.grid(True)
     f.show()
     
-    #spe3=np.fft.fft(h._Z.Value,axis=0)
-    maximum=np.amax([np.abs(np.real(h._Z.Value)), np.abs(np.imag(h._Z.Value))])
+    #spe3=np.fft.fft(h._Z.Data,axis=0)
+    maximum=np.amax([np.abs(np.real(h._Z.Data)), np.abs(np.imag(h._Z.Data))])
     str="Output signal range is %i" %(maximum)
     t.print_log({'type':'I', 'msg': str})
-    fs, spe3=sig.welch(h._Z.Value,fs=lowrate,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
+    fs, spe3=sig.welch(h._Z.Data,fs=lowrate,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
     print(fs)
     w=np.arange(spe3.shape[0])/spe3.shape[0]*lowrate
     ff=plt.figure(3)
